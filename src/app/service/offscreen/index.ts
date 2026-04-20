@@ -3,11 +3,11 @@ import type { MessageSend } from "@Packages/message/types";
 import { ScriptService } from "./script";
 import { type Logger } from "@App/app/repo/logger";
 import { WindowMessage } from "@Packages/message/window_message";
-import { ServiceWorkerClient } from "../service_worker/client";
 import { sendMessage } from "@Packages/message/client";
 import GMApi from "./gm_api";
 import { MessageQueue } from "@Packages/message/message_queue";
 import { VSCodeConnect } from "./vscode-connect";
+import { HtmlExtractorService } from "./html_extractor";
 import { makeBlobURL } from "@App/pkg/utils/utils";
 
 // offscreen环境的管理器
@@ -18,12 +18,9 @@ export class OffscreenManager {
 
   private messageQueue = new MessageQueue();
 
-  private serviceWorker: ServiceWorkerClient;
-
-  constructor(private extMsgSender: MessageSend) {
+  constructor(private msgSender: MessageSend) {
     this.windowMessage = new WindowMessage(window, sandbox, true);
     this.windowServer = new Server("offscreen", this.windowMessage);
-    this.serviceWorker = new ServiceWorkerClient(this.extMsgSender);
   }
 
   logger(data: Logger) {
@@ -36,11 +33,11 @@ export class OffscreenManager {
 
   preparationSandbox() {
     // 通知初始化好环境了
-    this.serviceWorker.preparationOffscreen();
+    sendMessage(this.msgSender, "serviceWorker/preparationOffscreen");
   }
 
   sendMessageToServiceWorker(data: { action: string; data: any }) {
-    return sendMessage(this.extMsgSender, `serviceWorker/${data.action}`, data.data);
+    return sendMessage(this.msgSender, `serviceWorker/${data.action}`, data.data);
   }
 
   async initManager() {
@@ -50,24 +47,33 @@ export class OffscreenManager {
     this.windowServer.on("sendMessageToServiceWorker", this.sendMessageToServiceWorker.bind(this));
     const script = new ScriptService(
       this.windowServer.group("script"),
-      this.extMsgSender,
+      this.msgSender,
       this.windowMessage,
       this.messageQueue
     );
     script.init();
-    // 转发从sandbox来的gm api请求
-    forwardMessage("serviceWorker", "runtime/gmApi", this.windowServer, this.extMsgSender);
+    // 转发从sandbox来的gm api请求,通过postMessage通道传输(支持Blob等结构化克隆)
+    forwardMessage("serviceWorker", "runtime/gmApi", this.windowServer, this.msgSender);
+    // 转发 Skill Script 执行请求到 sandbox
+    forwardMessage("sandbox", "executeSkillScript", this.windowServer, this.windowMessage);
     // 转发valueUpdate与emitEvent
     forwardMessage("sandbox", "runtime/valueUpdate", this.windowServer, this.windowMessage);
     forwardMessage("sandbox", "runtime/emitEvent", this.windowServer, this.windowMessage);
-
     const gmApi = new GMApi(this.windowServer.group("gmApi"));
     gmApi.init();
-    const vscodeConnect = new VSCodeConnect(this.windowServer.group("vscodeConnect"), this.extMsgSender);
+    const vscodeConnect = new VSCodeConnect(this.windowServer.group("vscodeConnect"), this.msgSender);
     vscodeConnect.init();
+    const htmlExtractor = new HtmlExtractorService(this.windowServer.group("htmlExtractor"));
+    htmlExtractor.init();
 
     this.windowServer.on("createObjectURL", async (params: { blob: Blob; persistence: boolean }) => {
       return makeBlobURL(params) as string;
+    });
+
+    // fetch blob URL 并返回 Blob（供 SW 在 chrome.runtime 通道下还原 content script 创建的 blob URL）
+    this.windowServer.on("fetchBlob", async (params: { url: string }) => {
+      const res = await fetch(params.url);
+      return await res.blob();
     });
   }
 }
