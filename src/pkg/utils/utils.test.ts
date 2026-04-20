@@ -532,8 +532,6 @@ describe.concurrent("toCamelCase", () => {
   it.concurrent("应当将蛇形命名转换为驼峰命名", () => {
     expect(toCamelCase("cloud_sync")).toBe("CloudSync");
     expect(toCamelCase("cat_file_storage")).toBe("CatFileStorage");
-    expect(toCamelCase("enable_eslint")).toBe("EnableEslint");
-    expect(toCamelCase("eslint_config")).toBe("EslintConfig");
   });
 
   it.concurrent("应当正确处理单词配置键", () => {
@@ -541,7 +539,6 @@ describe.concurrent("toCamelCase", () => {
   });
 
   it.concurrent("应当正确处理多下划线配置键", () => {
-    expect(toCamelCase("editor_type_definition")).toBe("EditorTypeDefinition");
     expect(toCamelCase("script_list_column_width")).toBe("ScriptListColumnWidth");
   });
 });

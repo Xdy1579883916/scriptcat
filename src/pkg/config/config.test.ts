@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+﻿import { describe, expect, it, beforeEach } from "vitest";
 import { SystemConfig } from "./config";
 import { MessageQueue } from "@Packages/message/message_queue";
 
@@ -78,16 +78,6 @@ describe("SystemConfig 双 storage 与懒迁移", () => {
 
       const localData = await chrome.storage.local.get("system_check_script_update_cycle");
       expect(localData["system_check_script_update_cycle"]).toBeUndefined();
-    });
-
-    it("enable_eslint 应写入 sync storage", async () => {
-      config.setEnableEslint(false);
-
-      const syncData = await chrome.storage.sync.get("system_enable_eslint");
-      expect(syncData["system_enable_eslint"]).toBe(false);
-
-      const localData = await chrome.storage.local.get("system_enable_eslint");
-      expect(localData["system_enable_eslint"]).toBeUndefined();
     });
   });
 

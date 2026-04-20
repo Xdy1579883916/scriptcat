@@ -3,16 +3,6 @@ import { render, type RenderOptions, cleanup } from "@testing-library/react";
 import { AppProvider } from "@App/pages/store/AppContext";
 import { vi, afterEach } from "vitest";
 
-// Mock monaco-editor
-vi.mock("monaco-editor", () => ({
-  editor: {
-    setTheme: vi.fn(),
-    create: vi.fn(),
-    createModel: vi.fn(),
-    setModelLanguage: vi.fn(),
-  },
-}));
-
 // Cleanup after each test
 afterEach(() => {
   cleanup();

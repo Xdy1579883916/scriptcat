@@ -22,15 +22,7 @@ const dist = path.join(dirname, "dist");
 const assets = path.join(src, "assets");
 
 // 排除这些文件，不进行分离
-const chunkExcludeSet = new Set([
-  "editor.worker",
-  "ts.worker",
-  "linter.worker",
-  "service_worker",
-  "content",
-  "inject",
-  "scripting",
-]);
+const chunkExcludeSet = new Set(["service_worker", "content", "inject", "scripting"]);
 
 export default {
   ...(isDev
@@ -61,9 +53,6 @@ export default {
     confirm: `${src}/pages/confirm/main.tsx`,
     import: `${src}/pages/import/main.tsx`,
     options: `${src}/pages/options/main.tsx`,
-    "editor.worker": "monaco-editor/esm/vs/editor/editor.worker.js",
-    "ts.worker": "monaco-editor/esm/vs/language/typescript/ts.worker.js",
-    "linter.worker": `${src}/linter.worker.ts`,
   },
   output: {
     path: `${dist}/ext/src`,
@@ -75,9 +64,6 @@ export default {
     alias: {
       "@App": path.resolve(dirname, "src/"),
       "@Packages": path.resolve(dirname, "packages/"),
-      // 改写eslint-plugin-userscripts以适配脚本猫，打包时重定义模块路径
-      "../data/compat-grant": path.resolve(dirname, "packages/eslint/compat-grant"),
-      "../data/compat-headers": path.resolve(dirname, "packages/eslint/compat-headers"),
     },
     fallback: {
       child_process: false,
@@ -317,7 +303,6 @@ export default {
             q = q.replace(/\..*/, "");
             tag = q.split("/")[2] || "";
           }
-          if (module.type !== "css" && tag === "monaco-editor") return "lib_monaco";
           switch (tag) {
             case "react-icons":
               if (p.includes("/react-icons/tb")) return undefined;
@@ -333,7 +318,6 @@ export default {
           if (tag.startsWith("dnd-kit")) return "lib_dnd-kit";
           if (tag.startsWith("popper")) return "lib_react-joyride";
           if (tag.startsWith("react-")) return "lib_react";
-          if (tag.startsWith("eslint")) return "lib_eslint";
           if (tag.startsWith("i18n")) return "lib_i18n";
           if (
             tag.startsWith("arco-design") ||

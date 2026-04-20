@@ -1,291 +1,203 @@
-import { editor, Range } from "monaco-editor";
 import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
-import { systemConfig } from "@App/pages/store/global";
-import { LinterWorkerController, registerEditor } from "@App/pkg/utils/monaco-editor";
 import { fnPlaceHolder } from "@App/pages/store/AppContext";
-
-fnPlaceHolder.setEditorTheme = (theme: string) => editor.setTheme(theme);
 
 type Props = {
   className?: string;
-  diffCode?: string; // 因为代码加载是异步的,diifCode有3种状态:undefined不确定,""没有diff,有diff,不确定的情况下,编辑器不会加载
+  diffCode?: string;
   editable?: boolean;
   id: string;
   code?: string;
+  onValueChange?: (value: string) => void;
 };
 
-type TMarker = {
-  code: { value: any };
-  startLineNumber: any;
-  endLineNumber: any;
-  startColumn: any;
-  endColumn: any;
-  fix: any;
-} & Record<string, any>;
+export type SimpleEditorAction = {
+  id: string;
+  label: string;
+  keybindings?: string[];
+  run: (editor: SimpleCodeEditorHandle) => void;
+};
 
-type TFormattedMarker = {
-  startLineNumber: number;
-  endLineNumber: number;
-  severity: number;
-} & Record<string, any>;
+export type SimpleCodeEditorHandle = {
+  addAction: (action: SimpleEditorAction) => void;
+  dispose: () => void;
+  focus: () => void;
+  getValue: () => string;
+  selectAll: () => void;
+  undo: () => void;
+  redo: () => void;
+  copy: () => void;
+  cut: () => void;
+  paste: () => Promise<void>;
+  uuid?: string;
+};
 
-const CodeEditor = React.forwardRef<{ editor: editor.IStandaloneCodeEditor | undefined }, Props>(
-  ({ id, className, code, diffCode, editable }, ref) => {
-    const [monacoEditor, setEditor] = useState<editor.IStandaloneCodeEditor>();
-    const [enableEslint, setEnableEslint] = useState(false);
-    const [eslintConfig, setEslintConfig] = useState("");
+fnPlaceHolder.setEditorTheme = () => {};
 
-    const divRef = useRef<HTMLDivElement>(null);
-    useImperativeHandle(ref, () => ({ editor: monacoEditor }));
+const normalizeHotkey = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const keys: string[] = [];
+  if (event.ctrlKey || event.metaKey) keys.push("Ctrl");
+  if (event.shiftKey) keys.push("Shift");
+  if (event.altKey) keys.push("Alt");
 
-    // 注册 monaco 全局环境（只需执行一次）
+  let key = event.key;
+  if (key.length === 1) {
+    key = key.toUpperCase();
+  } else if (key === "F5") {
+    key = "F5";
+  }
+  return [...keys, key].join("+");
+};
+
+const textareaStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  resize: "none",
+  border: "1px solid var(--color-neutral-5)",
+  borderRadius: 0,
+  outline: "none",
+  padding: "12px",
+  boxSizing: "border-box",
+  background: "var(--color-bg-2)",
+  color: "var(--color-text-1)",
+  fontFamily: "Consolas, Monaco, 'Courier New', monospace",
+  fontSize: "13px",
+  lineHeight: 1.5,
+  tabSize: 2,
+  whiteSpace: "pre",
+};
+
+const readonlyBlockStyle: React.CSSProperties = {
+  ...textareaStyle,
+  overflow: "auto",
+};
+
+const CodeEditor = React.forwardRef<{ editor: SimpleCodeEditorHandle }, Props>(
+  ({ className, code = "", diffCode, editable = false, onValueChange }, ref) => {
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const actionsRef = useRef<SimpleEditorAction[]>([]);
+    const valueRef = useRef(code);
+    const [value, setValue] = useState(code);
+
     useEffect(() => {
-      registerEditor();
-    }, []);
+      valueRef.current = code;
+      setValue(code);
+    }, [code]);
 
-    // 载入 ESLint 设定
-    useEffect(() => {
-      Promise.all([systemConfig.getEslintConfig(), systemConfig.getEnableEslint()]).then(([config, enabled]) => {
-        setEslintConfig(config);
-        setEnableEslint(enabled);
+    const replaceSelection = (nextText: string) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const start = textarea.selectionStart ?? 0;
+      const end = textarea.selectionEnd ?? 0;
+      const nextValue = `${valueRef.current.slice(0, start)}${nextText}${valueRef.current.slice(end)}`;
+      valueRef.current = nextValue;
+      setValue(nextValue);
+      onValueChange?.(nextValue);
+      requestAnimationFrame(() => {
+        const cursor = start + nextText.length;
+        textarea.setSelectionRange(cursor, cursor);
       });
-    }, []);
+    };
 
-    // 建立 monaco 编辑器实例
-    useEffect(() => {
-      if (diffCode === undefined || code === undefined || !divRef.current) return;
-
-      const container = document.getElementById(id) as HTMLDivElement;
-      let edit: editor.IStandaloneCodeEditor | editor.IStandaloneDiffEditor;
-
-      const commonEditorOptions = {
-        folding: true,
-        foldingStrategy: "indentation",
-        automaticLayout: true,
-        scrollbar: { alwaysConsumeMouseWheel: false },
-        overviewRulerBorder: false,
-        scrollBeyondLastLine: false,
-
-        glyphMargin: true,
-        unicodeHighlight: {
-          ambiguousCharacters: false,
-        },
-
-        // https://code.visualstudio.com/docs/editing/intellisense
-
-        // Controls whether suggestions should be accepted on commit characters. For example, in JavaScript, the semi-colon (`;`) can be a commit character that accepts a suggestion and types that character.
-        acceptSuggestionOnCommitCharacter: true,
-
-        // Controls if suggestions should be accepted on 'Enter' - in addition to 'Tab'. Helps to avoid ambiguity between inserting new lines or accepting suggestions. The value 'smart' means only accept a suggestion with Enter when it makes a textual change
-        acceptSuggestionOnEnter: "on",
-
-        // Controls the delay in ms after which quick suggestions will show up.
-        quickSuggestionsDelay: 10,
-
-        // Controls if suggestions should automatically show up when typing trigger characters
-        suggestOnTriggerCharacters: true,
-
-        // Controls if pressing tab inserts the best suggestion and if tab cycles through other suggestions
-        tabCompletion: "off",
-
-        // Controls whether sorting favours words that appear close to the cursor
-        suggest: {
-          localityBonus: true,
-          preview: true,
-        },
-
-        // Controls how suggestions are pre-selected when showing the suggest list
-        suggestSelection: "first",
-
-        // Enable word based suggestions
-        wordBasedSuggestions: "off",
-
-        // Enable parameter hints
-        parameterHints: {
-          enabled: true,
-        },
-
-        // https://qiita.com/H-goto16/items/43802950fc5c112c316b
-        // https://zenn.dev/udonj/articles/ultimate-vscode-customization-2024
-        // https://github.com/is0383kk/VSCode
-
-        quickSuggestions: {
-          other: true,
-          comments: true,
-          strings: true,
-        },
-
-        fastScrollSensitivity: 10,
-        smoothScrolling: true,
-        inlineSuggest: {
-          enabled: true,
-        },
-        guides: {
-          indentation: true,
-        },
-        renderLineHighlightOnlyWhenFocus: true,
-        snippetSuggestions: "top",
-
-        cursorBlinking: "phase",
-        cursorSmoothCaretAnimation: "off",
-
-        autoIndent: "advanced",
-        wrappingIndent: "indent",
-        wordSegmenterLocales: ["ja", "zh-CN", "zh-Hant-TW"] as string[],
-
-        renderLineHighlight: "gutter",
-        renderWhitespace: "selection",
-        renderControlCharacters: true,
-        dragAndDrop: false,
-        emptySelectionClipboard: false,
-        copyWithSyntaxHighlighting: false,
-        bracketPairColorization: {
-          enabled: true,
-        },
-        mouseWheelZoom: true,
-        links: true,
-        accessibilitySupport: "off",
-        largeFileOptimizations: true,
-        colorDecorators: true,
-      } as const;
-
-      if (diffCode) {
-        edit = editor.createDiffEditor(container, {
-          hideUnchangedRegions: { enabled: true },
-          enableSplitViewResizing: false,
-          renderSideBySide: false,
-          readOnly: true,
-          diffWordWrap: "off",
-          ...commonEditorOptions,
-        });
-        edit.setModel({
-          original: editor.createModel(diffCode, "javascript"),
-          modified: editor.createModel(code, "javascript"),
-        });
-      } else {
-        edit = editor.create(container, {
-          language: "javascript",
-          theme: document.body.getAttribute("arco-theme") === "dark" ? "vs-dark" : "vs",
-          readOnly: !editable,
-          ...commonEditorOptions,
-        });
-        edit.setValue(code);
-        setEditor(edit);
-      }
-
-      return () => {
-        // 目前会出现：Uncaught (in promise) Canceled: Canceled
-        // 问题追踪：https://github.com/microsoft/monaco-editor/issues/4702
-        edit?.dispose();
-      };
-    }, [id, code, diffCode, editable]);
-
-    // ESLint 即时检查逻辑
-    useEffect(() => {
-      if (!enableEslint || !monacoEditor) return;
-
-      const model = monacoEditor.getModel();
-      if (!model) return;
-
-      let timer: ReturnType<typeof setTimeout> | null = null;
-
-      const lint = () => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => {
-          timer = null;
-          LinterWorkerController.sendLinterMessage({
-            code: model.getValue(),
-            id,
-            config: JSON.parse(eslintConfig),
-          });
-        }, 500);
-      };
-      // 加载完成就检测一次
-      lint(); // 初次载入即检查
-      const changeListener = model.onDidChangeContent(lint);
-
-      // 在 glyph margin (行号旁) 显示EsLint错误/警告图示
-      const showGlyphIcons = (markers: { startLineNumber: number; endLineNumber: number; severity: number }[]) => {
-        const glyphMarginClassList = { 4: "icon-warn", 8: "icon-error" };
-
-        // 清除旧装饰
-        const oldDecorations = model
-          .getAllDecorations()
-          .filter(
-            (d) =>
-              d.options.glyphMarginClassName &&
-              Object.values(glyphMarginClassList).includes(d.options.glyphMarginClassName!)
-          );
-        monacoEditor.removeDecorations(oldDecorations.map((d) => d.id));
-
-        // (重新)添加新装饰 - Decorations
-        monacoEditor.createDecorationsCollection(
-          markers.map(({ startLineNumber, endLineNumber, severity }) => ({
-            range: new Range(startLineNumber, 1, endLineNumber, 1),
-            options: {
-              isWholeLine: true,
-              glyphMarginClassName: glyphMarginClassList[severity as 4 | 8],
-              /* 待改进 目前monaco似乎无法满足需求
-              glyphMarginHoverMessage: allMarkers.reduce(
-                (prev: any, next: any) => {
-                  if (
-                    next.startLineNumber === startLineNumber &&
-                    next.endLineNumber === endLineNumber
-                  ) {
-                    prev.push({
-                      value: `${next.message} ESLinter [(${next.code.value})](${next.code.target})`,
-                      isTrusted: true,
-                    });
-                  }
-                  return prev;
-                },
-                []
-              ),
-              */
-            },
-          }))
-        );
-      };
-
-      const messageHandler = (message: any) => {
-        if (id !== message.id) return;
-
-        editor.setModelMarkers(model, "ESLint", message.markers);
-
-        // 更新 eslint-fix 快取（每次替换整个 map，避免已修复问题的过期条目残留）
-        const eslintFixMap = (window.MonacoEnvironment as any)?.eslintFixMap;
-        if (eslintFixMap) {
-          eslintFixMap.clear();
-          message.markers.forEach((m: TMarker) => {
-            if (m.fix) {
-              const key = `${m.code.value}|${m.startLineNumber}|${m.endLineNumber}|${m.startColumn}|${m.endColumn}`;
-              eslintFixMap.set(key, m.fix);
-            }
-          });
+    const editorHandleRef = useRef<SimpleCodeEditorHandle>({
+      addAction(action) {
+        actionsRef.current = [...actionsRef.current.filter((item) => item.id !== action.id), action];
+      },
+      dispose() {
+        actionsRef.current = [];
+      },
+      focus() {
+        textareaRef.current?.focus();
+      },
+      getValue() {
+        return textareaRef.current?.value ?? valueRef.current;
+      },
+      selectAll() {
+        textareaRef.current?.select();
+      },
+      undo() {
+        textareaRef.current?.focus();
+        document.execCommand("undo");
+      },
+      redo() {
+        textareaRef.current?.focus();
+        document.execCommand("redo");
+      },
+      copy() {
+        textareaRef.current?.focus();
+        document.execCommand("copy");
+      },
+      cut() {
+        textareaRef.current?.focus();
+        document.execCommand("cut");
+      },
+      async paste() {
+        textareaRef.current?.focus();
+        try {
+          const text = await navigator.clipboard.readText();
+          replaceSelection(text);
+        } catch {
+          document.execCommand("paste");
         }
+      },
+    });
 
-        // 显示 glyph 图示 (在行号旁显示ESLint错误/警告图标)
-        const formatted = message.markers.map((m: TFormattedMarker) => ({
-          startLineNumber: m.startLineNumber,
-          endLineNumber: m.endLineNumber,
-          severity: m.severity,
-        }));
-        showGlyphIcons(formatted);
-      };
+    const editorHandle = editorHandleRef.current;
 
-      LinterWorkerController.hookAddListener("message", messageHandler);
+    useImperativeHandle(ref, () => ({ editor: editorHandle }), [editorHandle]);
 
+    useEffect(() => {
       return () => {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-        changeListener.dispose();
-        LinterWorkerController.hookRemoveListener("message", messageHandler);
+        editorHandle.dispose();
       };
-    }, [monacoEditor, enableEslint, eslintConfig, id]);
+    }, [editorHandle]);
 
-    return <div id={id} className={className} ref={divRef} />;
+    const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      const hotkey = normalizeHotkey(event);
+      const action = actionsRef.current.find((item) => item.keybindings?.includes(hotkey));
+      if (!action) return;
+      event.preventDefault();
+      action.run(editorHandle);
+    };
+
+    if (diffCode !== undefined && diffCode !== "") {
+      return (
+        <div className={className} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, height: "100%" }}>
+          <div style={readonlyBlockStyle}>
+            <div style={{ marginBottom: 8, fontWeight: 600 }}>Original</div>
+            <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{diffCode}</pre>
+          </div>
+          <div style={readonlyBlockStyle}>
+            <div style={{ marginBottom: 8, fontWeight: 600 }}>Current</div>
+            <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{value}</pre>
+          </div>
+        </div>
+      );
+    }
+
+    if (!editable) {
+      return (
+        <div className={className} style={readonlyBlockStyle}>
+          <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{value}</pre>
+        </div>
+      );
+    }
+
+    return (
+      <textarea
+        ref={textareaRef}
+        className={className}
+        spellCheck={false}
+        style={textareaStyle}
+        value={value}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          valueRef.current = nextValue;
+          setValue(nextValue);
+          onValueChange?.(nextValue);
+        }}
+        onKeyDown={handleKeyDown}
+      />
+    );
   }
 );
 

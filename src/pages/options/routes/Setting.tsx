@@ -1,8 +1,5 @@
 import { Button, Card, Checkbox, ColorPicker, Input, Message, Popover, Select, Space } from "@arco-design/web-react";
 import { IconQuestionCircleFill } from "@arco-design/web-react/icon";
-import prettier from "prettier/standalone";
-import * as babel from "prettier/parser-babel";
-import prettierPluginEstree from "prettier/plugins/estree";
 import RuntimeSetting from "@App/pages/components/RuntimeSetting";
 import i18n from "i18next";
 import { useTranslation } from "react-i18next";
@@ -11,7 +8,6 @@ import FileSystemFactory from "@Packages/filesystem/factory";
 import FileSystemParams from "@App/pages/components/FileSystemParams";
 import { blackListSelfCheck } from "@App/pkg/utils/match";
 import { obtainBlackList } from "@App/pkg/utils/utils";
-import CustomTrans from "@App/pages/components/CustomTrans";
 import { useSystemConfig } from "./utils";
 import { subscribeMessage } from "@App/pages/store/global";
 import { SystemConfigChange, type SystemConfigKey } from "@App/pkg/config/config";
@@ -24,7 +20,6 @@ import { initRegularUpdateCheck } from "@App/app/service/service_worker/regular_
 import { HookManager } from "@App/pkg/utils/hookManager";
 
 function Setting() {
-  const [editorConfig, setEditorConfig, submitEditorConfig] = useSystemConfig("editor_config");
   const [cloudSync, setCloudSync, submitCloudSync] = useSystemConfig("cloud_sync");
   const [language, setLanguage, submitLanguage] = useSystemConfig("language");
   const [menuExpandNum, setMenuExpandNum, submitMenuExpandNum] = useSystemConfig("menu_expand_num");
@@ -34,8 +29,6 @@ function Setting() {
     useSystemConfig("update_disable_script");
   const [silenceUpdateScript, setSilenceUpdateScript, submitSilenceUpdateScript] =
     useSystemConfig("silence_update_script");
-  const [enableEslint, setEnableEslint, submitEnableEslint] = useSystemConfig("enable_eslint");
-  const [eslintConfig, setEslintConfig, submitEslintConfig] = useSystemConfig("eslint_config");
   const [blacklist, setBlacklist, submitBlacklist] = useSystemConfig("blacklist");
   const [badgeNumberType, setBadgeNumberType, submitBadgeNumberType] = useSystemConfig("badge_number_type");
   const [badgeBackgroundColor, setBadgeBackgroundColor, submitBadgeBackgroundColor] =
@@ -44,9 +37,6 @@ function Setting() {
   const [scriptMenuDisplayType, setScriptMenuDisplayType, submitScriptMenuDisplayType] =
     useSystemConfig("script_menu_display_type");
   const [faviconService, setFaviconService, submitFaviconService] = useSystemConfig("favicon_service");
-
-  const [editorTypeDefinition, setEditorTypeDefinition, submitEditorTypeDefinition] =
-    useSystemConfig("editor_type_definition");
 
   const { t } = useTranslation();
   const languageList = useMemo(() => {
@@ -71,21 +61,17 @@ function Setting() {
   useEffect(() => {
     // only string / number / boolean
     const autoRefresh = {
-      editor_config: setEditorConfig,
       language: setLanguage,
       menu_expand_num: setMenuExpandNum,
       check_script_update_cycle: setCheckScriptUpdateCycle,
       update_disable_script: setUpdateDisableScript,
       silence_update_script: setSilenceUpdateScript,
-      enable_eslint: setEnableEslint,
-      eslint_config: setEslintConfig,
       blacklist: setBlacklist,
       badge_number_type: setBadgeNumberType,
       badge_background_color: setBadgeBackgroundColor,
       badge_text_color: setBadgeTextColor,
       script_menu_display_type: setScriptMenuDisplayType,
       favicon_service: setFaviconService,
-      editor_type_definition: setEditorTypeDefinition,
     } as const;
     const hookMgr = new HookManager();
     hookMgr.append(
@@ -437,139 +423,6 @@ function Setting() {
         </div>
       </Card>
       {/* 开发工具 */}
-      <Card title={t("development_tools")} bordered={false}>
-        <Space direction="vertical" size={20} className="tw-w-full">
-          <div className="tw-flex tw-items-center tw-justify-between tw-min-h-9">
-            <div className="tw-flex tw-items-center tw-gap-4 tw-flex-1">
-              <Checkbox
-                onChange={(checked) => {
-                  submitEnableEslint(checked);
-                }}
-                checked={enableEslint}
-              >
-                <span className="tw-font-medium">{t("enable_eslint")}</span>
-              </Checkbox>
-              <Button
-                type="text"
-                size="small"
-                className="tw-p-1"
-                icon={<IconQuestionCircleFill />}
-                href="https://eslint.org/play/"
-                target="_blank"
-              />
-            </div>
-            <span className="tw-text-xs tw-ml-6 tw-flex-shrink-0">{t("check_script_code_quality")}</span>
-          </div>
-
-          {enableEslint && (
-            <div>
-              <div className="tw-flex tw-items-start tw-justify-between tw-mb-3">
-                <span className="tw-font-medium tw-min-w-20">{t("eslint_rules")}</span>
-                <span className="tw-text-xs tw-max-w-60 tw-text-right tw-ml-6 tw-flex-shrink-0">
-                  {t("custom_eslint_rules_config")}
-                </span>
-              </div>
-              <Input.TextArea
-                placeholder={t("enter_eslint_rules")!}
-                autoSize={{
-                  minRows: 4,
-                  maxRows: 8,
-                }}
-                value={eslintConfig}
-                onChange={(v) => {
-                  setEslintConfig(v);
-                }}
-                onBlur={() => {
-                  prettier
-                    .format(eslintConfig, {
-                      parser: "json",
-                      plugins: [prettierPluginEstree, babel],
-                    })
-                    .then((value) => {
-                      if (value === "") {
-                        Message.success(t("eslint_rules_reset"));
-                      } else {
-                        Message.success(t("eslint_rules_saved"));
-                      }
-                      submitEslintConfig(value);
-                    })
-                    .catch((e) => {
-                      Message.error(`${t("eslint_config_format_error")}: ${JSON.stringify(Logger.E(e))}`);
-                    });
-                }}
-              />
-            </div>
-          )}
-          <div>
-            <div className="tw-flex tw-items-start tw-justify-between tw-mb-3">
-              <span className="tw-font-medium tw-min-w-20">{t("editor_config")}</span>
-              <CustomTrans
-                className="tw-text-xs tw-max-w-80 tw-text-right tw-ml-6 tw-flex-shrink-0"
-                i18nKey="editor_config_description"
-              />
-            </div>
-            <Input.TextArea
-              placeholder={t("editor_config")!}
-              autoSize={{
-                minRows: 4,
-                maxRows: 8,
-              }}
-              value={editorConfig}
-              onChange={(v) => {
-                setEditorConfig(v);
-              }}
-              onBlur={() => {
-                prettier
-                  .format(editorConfig, {
-                    parser: "json",
-                    plugins: [prettierPluginEstree, babel],
-                  })
-                  .then((value) => {
-                    if (value === "") {
-                      Message.success(t("editor_config_reset"));
-                    } else {
-                      Message.success(t("editor_config_saved"));
-                    }
-                    submitEditorConfig(value);
-                  })
-                  .catch((e) => {
-                    Message.error(`${t("editor_config_format_error")}: ${JSON.stringify(Logger.E(e))}`);
-                  });
-              }}
-            />
-          </div>
-          <div>
-            <div className="tw-flex tw-items-start tw-justify-between tw-mb-3">
-              <span className="tw-font-medium tw-min-w-20">{t("editor_type_definition")}</span>
-              <span
-                className="tw-text-xs tw-max-w-100 tw-text-right tw-ml-6 tw-flex-shrink-0"
-                dangerouslySetInnerHTML={{
-                  __html: t("editor_type_definition_description"),
-                }}
-              ></span>
-            </div>
-            <Input.TextArea
-              placeholder={t("editor_type_definition")!}
-              autoSize={{
-                minRows: 4,
-                maxRows: 8,
-              }}
-              value={editorTypeDefinition as string}
-              onChange={(v) => {
-                setEditorTypeDefinition(v);
-              }}
-              onBlur={() => {
-                if (editorTypeDefinition === "") {
-                  Message.success(t("editor_type_definition_reset"));
-                } else {
-                  Message.success(t("editor_type_definition_saved"));
-                }
-                submitEditorTypeDefinition(editorTypeDefinition as string);
-              }}
-            />
-          </div>
-        </Space>
-      </Card>
     </Space>
   );
 }

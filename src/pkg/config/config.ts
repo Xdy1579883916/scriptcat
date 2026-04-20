@@ -1,11 +1,8 @@
 import ChromeStorage from "./chrome_storage";
-import { defaultConfig } from "../../../packages/eslint/linter-config";
-import { defaultConfig as editorDefaultConfig } from "@App/pkg/utils/monaco-editor/config";
 import type { FileSystemType } from "@Packages/filesystem/factory";
 import type { IMessageQueue, TKeyValue } from "@Packages/message/message_queue";
 import { matchLanguage } from "@App/locales/locales";
 import { ExtVersion } from "@App/app/const";
-import defaultTypeDefinition from "@App/template/scriptcat.d.tpl";
 import { toCamelCase } from "../utils/utils";
 import EventEmitter from "eventemitter3";
 import { STORAGE_LOCAL_KEYS } from "./consts";
@@ -311,54 +308,6 @@ export class SystemConfig {
 
   setCatFileStorage(data: CATFileStorage) {
     this._set("cat_file_storage", data);
-  }
-
-  getEnableEslint() {
-    return this._get<boolean>("enable_eslint", true);
-  }
-
-  setEnableEslint(val: boolean) {
-    this._set("enable_eslint", val);
-  }
-
-  getEslintConfig() {
-    return this._get<string>("eslint_config", defaultConfig);
-  }
-
-  setEslintConfig(v: string) {
-    if (v === "") {
-      this._set("eslint_config", defaultConfig);
-      return;
-    }
-    JSON.parse(v);
-    return this._set("eslint_config", v);
-  }
-
-  getEditorConfig() {
-    return this._get<string>("editor_config", editorDefaultConfig);
-  }
-
-  setEditorConfig(v: string) {
-    if (v === "") {
-      this._set("editor_config", editorDefaultConfig);
-      return;
-    }
-    JSON.parse(v);
-    return this._set("editor_config", v);
-  }
-
-  // 获取typescript类型定义
-  getEditorTypeDefinition(): string {
-    return localStorage.getItem("editor_type_definition") || defaultTypeDefinition;
-  }
-
-  // 由于内容过大，只能存储到localStorage中
-  setEditorTypeDefinition(v: string) {
-    if (v === "") {
-      delete localStorage["editor_type_definition"];
-      return;
-    }
-    localStorage.setItem("editor_type_definition", v);
   }
 
   // 日志清理周期

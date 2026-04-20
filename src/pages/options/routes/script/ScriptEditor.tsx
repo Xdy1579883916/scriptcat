@@ -1,10 +1,8 @@
 import type { Script } from "@App/app/repo/scripts";
 import { SCRIPT_TYPE_NORMAL, ScriptCodeDAO, ScriptDAO } from "@App/app/repo/scripts";
-import CodeEditor from "@App/pages/components/CodeEditor";
+import CodeEditor, { type SimpleCodeEditorHandle } from "@App/pages/components/CodeEditor";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type { editor } from "monaco-editor";
-import { KeyCode, KeyMod } from "monaco-editor";
 import { Button, Dropdown, Grid, Input, Menu, Message, Modal, Space, Tabs, Tooltip } from "@arco-design/web-react";
 import TabPane from "@arco-design/web-react/es/Tabs/tab-pane";
 import normalTpl from "@App/template/normal.tpl";
@@ -31,8 +29,8 @@ const { Row, Col } = Grid;
 type HotKey = {
   id: string;
   title: string;
-  hotKey: number;
-  action: (script: Script, codeEditor: editor.ICodeEditor) => void;
+  hotKey: string;
+  action: (script: Script, codeEditor: SimpleCodeEditorHandle) => void;
 };
 
 const Editor: React.FC<{
@@ -40,12 +38,12 @@ const Editor: React.FC<{
   getScript: (uuid: string) => Script | undefined;
   code: string;
   hotKeys: HotKey[];
-  callbackEditor: (e: editor.ICodeEditor) => void;
+  callbackEditor: (e: SimpleCodeEditorHandle) => void;
   onChange: (code: string) => void;
   className: string;
 }> = ({ id, getScript, code, hotKeys, callbackEditor, onChange, className }) => {
-  const [node, setNode] = useState<{ editor: editor.IStandaloneCodeEditor }>();
-  const ref = useCallback<(node: { editor: editor.IStandaloneCodeEditor }) => void>(
+  const [node, setNode] = useState<{ editor: SimpleCodeEditorHandle }>();
+  const ref = useCallback<(node: { editor: SimpleCodeEditorHandle }) => void>(
     (inlineNode) => {
       if (inlineNode && inlineNode.editor && !node) {
         setNode(inlineNode);
@@ -75,14 +73,22 @@ const Editor: React.FC<{
         },
       });
     });
-    node.editor.onKeyUp(() => {
-      onChange(node.editor.getValue() || "");
-    });
     callbackEditor(node.editor);
     return node.editor.dispose.bind(node.editor);
-  }, [node?.editor]);
+  }, [node?.editor, hotKeys, callbackEditor, getScript, id]);
 
-  return <CodeEditor key={id} id={id} ref={ref} className={className} code={code} diffCode="" editable />;
+  return (
+    <CodeEditor
+      key={id}
+      id={id}
+      ref={ref}
+      className={className}
+      code={code}
+      diffCode=""
+      editable
+      onValueChange={onChange}
+    />
+  );
 };
 
 const WarpEditor = React.memo(Editor, (prev, next) => {
@@ -92,15 +98,15 @@ const WarpEditor = React.memo(Editor, (prev, next) => {
 type EditorMenu = {
   title: string;
   tooltip?: string;
-  action?: (script: Script, e: editor.ICodeEditor) => void;
+  action?: (script: Script, e: SimpleCodeEditorHandle) => void;
   items?: (
     | {
         id: string;
         title: string;
         tooltip?: string;
-        hotKey?: number;
+        hotKey?: string;
         hotKeyString?: string;
-        action: (script: Script, e: editor.ICodeEditor) => void;
+        action: (script: Script, e: SimpleCodeEditorHandle) => void;
         divider?: never;
       }
     | { divider: true }
@@ -196,7 +202,7 @@ type EditorState = {
   code: string;
   active: boolean;
   hotKeys: HotKey[];
-  editor?: editor.ICodeEditor;
+  editor?: SimpleCodeEditorHandle;
   isChanged: boolean;
 };
 
@@ -222,7 +228,7 @@ function ScriptEditor() {
   const editorFindItem = (uuid: string) => {
     return editorsRef.current.find((e) => e.script.uuid === uuid);
   };
-  const delayedEditorFocus = (editor: editor.ICodeEditor | null | undefined, delayMs: number = 100) => {
+  const delayedEditorFocus = (editor: SimpleCodeEditorHandle | null | undefined, delayMs: number = 100) => {
     editor = !editor ? editorsRef.current.find((e) => e.active && e.script.uuid === selectedScript)?.editor : editor;
     if (editor) {
       setTimeout(editor.focus.bind(editor), delayMs);
@@ -304,7 +310,7 @@ function ScriptEditor() {
     setVisible({ ...visible });
   };
 
-  const save = (existingScript: Script, e: editor.ICodeEditor): Promise<Script> => {
+  const save = (existingScript: Script, e: SimpleCodeEditorHandle): Promise<Script> => {
     // 解析code生成新的script并更新
     const code = e.getValue();
     const targetUUID = existingScript.uuid;
@@ -454,7 +460,7 @@ function ScriptEditor() {
       });
   };
 
-  const saveAs = (script: Script, e: editor.ICodeEditor) => {
+  const saveAs = (script: Script, e: SimpleCodeEditorHandle) => {
     return new Promise<void>((resolve) => {
       chrome.downloads.download(
         {
@@ -489,14 +495,14 @@ function ScriptEditor() {
         {
           id: "save",
           title: t("save"),
-          hotKey: KeyMod.CtrlCmd | KeyCode.KeyS,
+          hotKey: "Ctrl+S",
           hotKeyString: "Ctrl+S",
           action: save,
         },
         {
           id: "saveAs",
           title: t("save_as"),
-          hotKey: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyS,
+          hotKey: "Ctrl+Shift+S",
           hotKeyString: "Ctrl+Shift+S",
           action: saveAs,
         },
@@ -510,7 +516,7 @@ function ScriptEditor() {
           title: t("undo"),
           hotKeyString: "Ctrl+Z",
           action(_script, e) {
-            e.trigger("menu", "undo", null);
+            e.undo();
           },
         },
         {
@@ -518,7 +524,7 @@ function ScriptEditor() {
           title: t("redo"),
           hotKeyString: "Ctrl+Shift+Z",
           action(_script, e) {
-            e.trigger("menu", "redo", null);
+            e.redo();
           },
         },
         { divider: true },
@@ -527,7 +533,7 @@ function ScriptEditor() {
           title: t("cut"),
           hotKeyString: "Ctrl+X",
           action(_script, e) {
-            e.trigger("menu", "editor.action.clipboardCutAction", null);
+            e.cut();
           },
         },
         {
@@ -535,7 +541,7 @@ function ScriptEditor() {
           title: t("copy"),
           hotKeyString: "Ctrl+C",
           action(_script, e) {
-            e.trigger("menu", "editor.action.clipboardCopyAction", null);
+            e.copy();
           },
         },
         {
@@ -543,26 +549,7 @@ function ScriptEditor() {
           title: t("paste"),
           hotKeyString: "Ctrl+V",
           action(_script, e) {
-            e.trigger("menu", "editor.action.clipboardPasteAction", null);
-          },
-        },
-        { divider: true },
-        {
-          id: "find",
-          title: t("find"),
-          hotKey: KeyMod.CtrlCmd | KeyCode.KeyF,
-          hotKeyString: "Ctrl+F",
-          action(_script, e) {
-            e.getAction("actions.find")?.run();
-          },
-        },
-        {
-          id: "replace",
-          title: t("replace"),
-          hotKey: KeyMod.CtrlCmd | KeyCode.KeyH,
-          hotKeyString: "Ctrl+H",
-          action(_script, e) {
-            e.getAction("editor.action.startFindReplaceAction")?.run();
+            void e.paste();
           },
         },
         {
@@ -570,7 +557,7 @@ function ScriptEditor() {
           title: t("select_all"),
           hotKeyString: "Ctrl+A",
           action(_script, e) {
-            e.trigger("menu", "editor.action.selectAll", null);
+            e.selectAll();
           },
         },
       ],
@@ -581,7 +568,7 @@ function ScriptEditor() {
         {
           id: "run",
           title: t("run"),
-          hotKey: KeyMod.CtrlCmd | KeyCode.F5,
+          hotKey: "Ctrl+F5",
           hotKeyString: "Ctrl+F5",
           tooltip: t("only_background_scheduled_can_run"),
           action: async (script, e) => {
